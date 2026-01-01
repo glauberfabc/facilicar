@@ -10,8 +10,10 @@ export default function CompanySettings() {
   const { profile, establishment, isAdmin, isSuperAdmin, loading: permLoading } = usePermissions()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [formData, setFormData] = useState({
     nome: '',
+    responsavel: '',
     cnpj: '',
     telefone: '',
     email: '',
@@ -19,7 +21,8 @@ export default function CompanySettings() {
     endereco: '',
     bairro: '',
     cidade: '',
-    estado: ''
+    estado: '',
+    logo_url: ''
   })
 
   useEffect(() => {
@@ -42,20 +45,66 @@ export default function CompanySettings() {
       if (data) {
         setFormData({
           nome: data.nome || '',
+          responsavel: data.responsavel || '',
           cnpj: data.cnpj || '',
           telefone: data.telefone || '',
           email: data.email || '',
           cep: data.cep || '',
           endereco: data.endereco || '',
           bairro: data.bairro || '',
-          cidade: data.cidade || '',
-          estado: data.estado || ''
+          cidade: data.localidade || '',
+          estado: data.uf || '',
+          logo_url: data.logo_url || ''
         })
       }
     } catch (error) {
       console.error('Erro ao buscar dados da empresa:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleLogoUpload = async (e) => {
+    try {
+      setUploading(true)
+      const file = e.target.files[0]
+      if (!file) return
+
+      // Validar tipo e tamanho
+      if (!file.type.startsWith('image/')) {
+        alert('Por favor, selecione uma imagem.')
+        return
+      }
+
+      if (file.size > 2 * 1024 * 1024) { // 2MB
+        alert('A imagem deve ter no máximo 2MB.')
+        return
+      }
+
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${profile.establishment_id}-${Date.now()}.${fileExt}`
+      const filePath = `${fileName}`
+
+      // Upload para o bucket 'empresa'
+      const { error: uploadError } = await supabase.storage
+        .from('empresa')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // Pegar URL pública
+      const { data: { publicUrl } } = supabase.storage
+        .from('empresa')
+        .getPublicUrl(filePath)
+
+      setFormData(prev => ({ ...prev, logo_url: publicUrl }))
+      alert('Logo carregada com sucesso! Clique em Salvar para confirmar.')
+
+    } catch (error) {
+      console.error('Erro ao fazer upload da logo:', error)
+      alert('Erro ao fazer upload da logo. Verifique se o bucket "empresa" existe e está configurado como público.')
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -126,6 +175,69 @@ export default function CompanySettings() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Logo da Empresa */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              Logo da Empresa
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-6">
+              <div className="w-32 h-32 rounded-lg bg-dark-lighter border-2 border-dashed border-metallic-light flex items-center justify-center overflow-hidden relative group">
+                {formData.logo_url ? (
+                  <img
+                    src={formData.logo_url}
+                    alt="Logo da empresa"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-center p-2">
+                    <Building2 className="w-8 h-8 text-metallic-light mx-auto mb-2" />
+                    <span className="text-xs text-metallic-light">Sem logo</span>
+                  </div>
+                )}
+                {uploading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-white mb-2">
+                  Alterar Logo
+                </label>
+                <p className="text-xs text-metallic-light mb-4">
+                  Recomendado: Imagem quadrada (PNG ou JPG), máx. 2MB.
+                </p>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                    id="logo-upload"
+                    disabled={uploading}
+                  />
+                  <label
+                    htmlFor="logo-upload"
+                    className={`
+                      inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium
+                      bg-dark-lighter text-white border border-dark-lighter
+                      hover:bg-dark-lighter/80 cursor-pointer transition-colors
+                      ${uploading ? 'opacity-50 cursor-not-allowed' : ''}
+                    `}
+                  >
+                    {uploading ? 'Enviando...' : 'Selecionar Arquivo'}
+                  </label>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Dados Básicos */}
         <Card>
           <CardHeader>
@@ -146,6 +258,19 @@ export default function CompanySettings() {
                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                 className="w-full px-4 py-2 bg-dark-lighter border border-dark-lighter rounded-lg text-white focus:outline-none focus:border-primary"
                 placeholder="Nome fantasia ou razão social"
+              />
+            </div>
+
+            <div>
+              <label className="block text-metallic-light text-sm font-medium mb-2">
+                Nome do Responsável
+              </label>
+              <input
+                type="text"
+                value={formData.responsavel}
+                onChange={(e) => setFormData({ ...formData, responsavel: e.target.value })}
+                className="w-full px-4 py-2 bg-dark-lighter border border-dark-lighter rounded-lg text-white focus:outline-none focus:border-primary"
+                placeholder="Nome do responsável pela empresa"
               />
             </div>
 

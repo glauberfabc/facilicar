@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { usePermissions } from '../contexts/PermissionsContext'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
@@ -36,9 +37,15 @@ export default function ClientsWithVehicles() {
     categoria: 'Hatch'
   })
 
+  const location = useLocation()
+
   useEffect(() => {
     fetchClients()
-  }, [])
+    if (location.state?.openNew) {
+      setShowModal(true)
+      window.history.replaceState({}, document.title)
+    }
+  }, [location])
 
   useEffect(() => {
     if (searchTerm) {

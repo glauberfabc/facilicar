@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { usePermissions } from '../contexts/PermissionsContext'
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Car, CheckCircle, XCircle, Calendar } from 'lucide-react'
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Car, CheckCircle, XCircle, Calendar, FileText, UserPlus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import {
@@ -42,6 +43,7 @@ const StatCard = ({ title, value, icon: Icon, trend, trendValue, color = 'primar
 
 export const Dashboard = () => {
   const { profile } = usePermissions()
+  const navigate = useNavigate()
   const [dateFilter, setDateFilter] = useState('today')
   const [customDateStart, setCustomDateStart] = useState('')
   const [customDateEnd, setCustomDateEnd] = useState('')
@@ -60,11 +62,61 @@ export const Dashboard = () => {
   const [revenueData, setRevenueData] = useState([])
   const [servicesData, setServicesData] = useState([])
 
+  const [topClients, setTopClients] = useState([])
+  const [responsavel, setResponsavel] = useState('')
+  const [currentDate, setCurrentDate] = useState('')
+  const [currentTime, setCurrentTime] = useState('')
+
   useEffect(() => {
     if (profile?.establishment_id) {
       fetchDashboardData()
+      fetchEstablishmentData()
     }
+
+    // Clock timer
+    const timer = setInterval(updateClock, 1000)
+    updateClock() // Initial call
+
+    return () => clearInterval(timer)
   }, [profile, dateFilter, customDateStart, customDateEnd])
+
+  const updateClock = () => {
+    const now = new Date()
+
+    // Format Date: "06 de Dezembro"
+    const dateOptions = { day: '2-digit', month: 'long' }
+    const dateString = now.toLocaleDateString('pt-BR', dateOptions)
+
+    // Format Time: "16:20" (UTC-3)
+    // Assuming the browser is already in the user's timezone or we force it.
+    // The user asked for "Hora UTC-3". If the user is in Brazil, local time is usually UTC-3.
+    // To be precise, we can offset it.
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000)
+    const brazilTime = new Date(utcTime - (3 * 60 * 60 * 1000))
+
+    const timeString = brazilTime.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+
+    setCurrentDate(`Hoje é dia ${dateString}`)
+    setCurrentTime(`${timeString} UTC-3`)
+  }
+
+  const fetchEstablishmentData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('establishments')
+        .select('responsavel')
+        .eq('id', profile.establishment_id)
+        .single()
+
+      if (error) throw error
+      if (data) setResponsavel(data.responsavel || 'Visitante')
+    } catch (error) {
+      console.error('Erro ao buscar dados da empresa:', error)
+    }
+  }
 
   const getDateRange = () => {
     const now = new Date()
@@ -109,7 +161,13 @@ export const Dashboard = () => {
       // Buscar agendamentos do período
       const { data: appointmentsData, error } = await supabase
         .from('appointments')
-        .select('*')
+        .select(`
+          *,
+          clients (
+            id,
+            nome
+          )
+        `)
         .eq('establishment_id', profile.establishment_id)
         .gte('data_agendamento', startDate.toISOString())
         .lt('data_agendamento', endDate.toISOString())
@@ -125,7 +183,7 @@ export const Dashboard = () => {
 
       const paidOrders = appointmentsData?.filter(a => a.status === 'concluido').length || 0
       const canceledOrders = appointmentsData?.filter(a => a.status === 'cancelado').length || 0
-      const carsInYard = appointmentsData?.filter(a => a.status === 'em_andamento').length || 0
+      const carsInYard = appointmentsData?.filter(a => ['pendente', 'confirmado', 'em_andamento'].includes(a.status)).length || 0
 
       setStats({
         totalRevenue,
@@ -142,10 +200,62 @@ export const Dashboard = () => {
       // Preparar dados para gráfico de pizza (distribuição de serviços)
       await fetchServicesDistribution()
 
+      // Buscar Top 5 Clientes (Geral, não apenas do período filtrado)
+      await fetchTopClients()
+
     } catch (error) {
       console.error('❌ Erro ao buscar dados do dashboard:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTopClients = async () => {
+    try {
+      // Buscar todos os agendamentos concluídos
+      const { data, error } = await supabase
+        .from('appointments')
+        .select(`
+          valor_estimado,
+          clients (
+            id,
+            nome,
+            email
+          )
+        `)
+        .eq('establishment_id', profile.establishment_id)
+        .eq('status', 'concluido')
+
+      if (error) throw error
+
+      // Agrupar por cliente e somar valores
+      const clientStats = {}
+
+      data?.forEach(app => {
+        if (app.clients) {
+          const clientId = app.clients.id
+          if (!clientStats[clientId]) {
+            clientStats[clientId] = {
+              id: clientId,
+              nome: app.clients.nome,
+              email: app.clients.email,
+              totalSpent: 0,
+              visits: 0
+            }
+          }
+          clientStats[clientId].totalSpent += parseFloat(app.valor_estimado || 0)
+          clientStats[clientId].visits += 1
+        }
+      })
+
+      // Converter para array e ordenar
+      const sortedClients = Object.values(clientStats)
+        .sort((a, b) => b.totalSpent - a.totalSpent)
+        .slice(0, 5)
+
+      setTopClients(sortedClients)
+    } catch (error) {
+      console.error('❌ Erro ao buscar top clientes:', error)
     }
   }
 
@@ -231,8 +341,12 @@ export const Dashboard = () => {
   return (
     <div className="p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Dashboard</h1>
-        <p className="text-metallic-light">Visão geral do seu negócio</p>
+        <h1 className="text-3xl font-bold text-white mb-2">
+          Olá, {responsavel}
+        </h1>
+        <p className="text-metallic-light capitalize">
+          {currentDate} • {currentTime}
+        </p>
       </div>
 
       {/* Filtros de Data */}
@@ -296,6 +410,42 @@ export const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {/* Atalhos Rápidos */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Button
+          variant="ghost"
+          className="bg-dark-lighter hover:bg-primary/10 border border-dark-lighter hover:border-primary/50 h-auto py-4 flex flex-col items-center gap-2 group transition-all"
+          onClick={() => navigate('/orcamentos')}
+        >
+          <div className="p-3 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+            <FileText className="w-6 h-6 text-primary" />
+          </div>
+          <span className="font-medium text-white">Novo Orçamento</span>
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="bg-dark-lighter hover:bg-primary/10 border border-dark-lighter hover:border-primary/50 h-auto py-4 flex flex-col items-center gap-2 group transition-all"
+          onClick={() => navigate('/agendamentos', { state: { openNew: true } })}
+        >
+          <div className="p-3 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+            <Calendar className="w-6 h-6 text-primary" />
+          </div>
+          <span className="font-medium text-white">Novo Agendamento</span>
+        </Button>
+
+        <Button
+          variant="ghost"
+          className="bg-dark-lighter hover:bg-primary/10 border border-dark-lighter hover:border-primary/50 h-auto py-4 flex flex-col items-center gap-2 group transition-all"
+          onClick={() => navigate('/clientes', { state: { openNew: true } })}
+        >
+          <div className="p-3 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+            <UserPlus className="w-6 h-6 text-primary" />
+          </div>
+          <span className="font-medium text-white">Novo Cliente</span>
+        </Button>
+      </div>
+
       {/* Grid de Indicadores */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
@@ -328,10 +478,10 @@ export const Dashboard = () => {
         />
       </div>
 
-      {/* Área de Gráficos */}
+      {/* Área de Gráficos e Top Clientes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Gráfico de Linha - Faturamento */}
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Faturamento dos Últimos 30 Dias</CardTitle>
           </CardHeader>
@@ -406,6 +556,45 @@ export const Dashboard = () => {
             ) : (
               <div className="h-[300px] flex items-center justify-center text-metallic-light">
                 Nenhum serviço realizado no período
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top 5 Clientes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top 5 Clientes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {topClients.length > 0 ? (
+              <div className="space-y-4">
+                {topClients.map((client, index) => (
+                  <div key={client.id} className="flex items-center justify-between p-3 bg-dark-lighter rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={`
+                        w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
+                        ${index === 0 ? 'bg-yellow-500/20 text-yellow-500' :
+                          index === 1 ? 'bg-gray-400/20 text-gray-400' :
+                            index === 2 ? 'bg-orange-500/20 text-orange-500' :
+                              'bg-primary/10 text-primary'}
+                      `}>
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{client.nome}</p>
+                        <p className="text-xs text-metallic-light">{client.visits} visitas</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-primary font-bold">R$ {client.totalSpent.toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-metallic-light">
+                Nenhum dado de clientes disponível
               </div>
             )}
           </CardContent>

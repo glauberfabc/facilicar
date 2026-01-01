@@ -11,6 +11,7 @@ export default function Operational() {
   const { profile } = usePermissions()
   const navigate = useNavigate()
   const [appointments, setAppointments] = useState([])
+  const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedAppointment, setSelectedAppointment] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
@@ -28,6 +29,7 @@ export default function Operational() {
   useEffect(() => {
     if (profile?.establishment_id) {
       fetchActiveAppointments()
+      fetchServices()
     }
   }, [profile])
 

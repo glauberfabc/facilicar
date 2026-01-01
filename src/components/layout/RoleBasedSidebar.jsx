@@ -97,7 +97,6 @@ export const RoleBasedSidebar = () => {
       icon: UserCircle,
       items: [
         { name: 'Lista de Clientes', href: '/clientes' },
-        { name: 'Novo Cliente', href: '/novo-cliente' },
         { name: 'Lembretes', href: '/lembretes' },
         { name: 'Agendamentos', href: '/agendamentos' },
       ]
@@ -135,6 +134,7 @@ export const RoleBasedSidebar = () => {
         { name: 'Folha de Pagamento', href: '/folha-pagamento' },
         { name: 'Comissionamento', href: '/comissionamento' },
         { name: 'Meios de Pagamento', href: '/meios-pagamento' },
+        { name: 'Orçamentos', href: '/orcamentos' },
       ]
     },
   ]

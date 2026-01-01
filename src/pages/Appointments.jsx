@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { usePermissions } from '../contexts/PermissionsContext'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
@@ -51,6 +52,8 @@ export default function Appointments() {
     colaborador_id: ''
   })
 
+  const location = useLocation()
+
   useEffect(() => {
     if (profile?.establishment_id) {
       fetchAppointments()
@@ -59,7 +62,13 @@ export default function Appointments() {
       fetchVehicleCategories()
       fetchColaboradores()
     }
-  }, [profile])
+
+    if (location.state?.openNew) {
+      setShowModal(true)
+      // Clear state to prevent reopening on refresh (optional but good practice)
+      window.history.replaceState({}, document.title)
+    }
+  }, [profile, location])
 
   const fetchAppointments = async () => {
     try {

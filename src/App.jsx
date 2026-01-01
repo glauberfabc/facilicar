@@ -23,6 +23,7 @@ import Suppliers from './pages/Suppliers'
 import PaymentMethods from './pages/PaymentMethods'
 import Payroll from './pages/Payroll'
 import Commissions from './pages/Commissions'
+import Budgets from './pages/Budgets'
 import SuperAdminDashboard from './pages/SuperAdminDashboard'
 import { Layout } from './components/layout/Layout'
 
@@ -248,6 +249,16 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <Commissions />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/orcamentos"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <Budgets />
                   </Layout>
                 </ProtectedRoute>
               }
